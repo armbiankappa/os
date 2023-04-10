@@ -1,0 +1,169 @@
+name: Build Images
+#
+on:
+  repository_dispatch:
+    types: ["Dispatched jobs"]
+  push:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      release:
+        type: choice
+        description: 'Release'
+        options:
+        - nightly
+        - stable
+      board:
+        description: 'Board'
+        required: false
+        default: ''
+      version:
+        description: 'Version'
+        required: false
+        default: ''
+
+
+jobs:
+
+  Prepare:
+    name: "Prepare"
+    if: ${{ github.repository_owner == 'armbiankappa' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{steps.releases.outputs.version}}
+    steps:
+
+      - name: "Cancel active workflow"
+        uses: styfle/cancel-workflow-action@0.11.0
+        with:
+          all_but_latest: true
+          access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Keep only 32 nightly releases"
+        uses: Vucko130/delete-older-releases@v0.2.2
+        with:
+          keep_latest: 32
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Purge action workflow logs"
+        uses: igorjs/gh-actions-clean-workflow@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          days_old: 10
+
+  Version:
+    name: "Generate version"
+    needs: Prepare
+    if: ${{ github.repository_owner == 'armbiankappa' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{steps.releases.outputs.version}}
+    steps:
+
+      - name: Get latest release of NodeJS
+        uses: rez0n/actions-github-release@main
+        id: node_release
+        env:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: "armbian/os"
+          type: "prerelease"
+
+      - name: "Show"
+        run: echo ${{ steps.node_release.outputs.release }}
+
+      - name: "Store version"
+        id: releases
+        run: |
+
+          echo "${{ steps.node_release.outputs.release }}" > tag
+          echo "version=${{ steps.node_release.outputs.release }}" >> $GITHUB_OUTPUT
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v3
+        with:
+          name: assets-for-download
+          path: tag
+          retention-days: 5
+
+      - uses: ncipollo/release-action@v1
+        if: ${{ steps.node_release.outputs.release != '' }}
+        with:
+          tag: ${{ steps.node_release.outputs.release }}
+          name: "${{ steps.node_release.outputs.release }}"
+          omitBody: "true"
+          prerelease: "true"
+          allowUpdates: true
+          removeArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+        
+  Cluster_1:
+
+    needs: Version
+    name: "Cluster 10/10"
+    if: ${{ success() && github.repository_owner == 'armbiankappa' }}
+    uses: armbian/scripts/.github/workflows/build-images.yml@main
+
+    with:
+
+      config: "${{ github.event.inputs.config || 'all.conf' }}"
+      release: "${{ github.event.inputs.release || 'nightly' }}"
+      board: '${{ github.event.inputs.board }}'
+      part: 10
+      of: 10
+      version: "${{ needs.Version.outputs.version }}"
+      parallel: 20
+
+    secrets:
+      ACCESS_TOKEN:  ${{ secrets.GITHUB_TOKEN }} # ${{ secrets.ACCESS_TOKEN }}
+      SSH_KEY_TORRENTS: ${{ secrets.KEY_TORRENTS }}
+      KNOWN_HOSTS_UPLOAD: ${{ secrets.KNOWN_HOSTS_UPLOAD }}
+      GPG_KEY1: ${{ secrets.GPG_KEY1 }}
+      GPG_PASSPHRASE1: ${{ secrets.GPG_PASSPHRASE1 }}
+
+
+  Closing:
+
+    name: "Closing"
+    needs: [Cluster_1]
+    runs-on: ubuntu-latest
+    steps:
+   
+    - name: Download a single artifact
+      uses: actions/download-artifact@v3
+      with:
+         name: assets-for-download
+         path: tag
+
+    - name: "Get tag"
+      run: echo "TAG=$(cat tag/tag)" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Keep only 3 releases"
+      uses: Vucko130/delete-older-releases@v0.2.2
+      with:
+        keep_latest: 3
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+    - name: "Purge action workflow logs"
+      uses: igorjs/gh-actions-clean-workflow@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        days_old: 14
+
+    - uses: ncipollo/release-action@v1
+      if: ${{ github.repository_owner == 'armbian-gama' && github.event.inputs.version == '' }}
+      with:
+        tag: ${{ env.TAG }}
+        omitBody: true
+        omitName: true
+        allowUpdates: true
+        prerelease: false
+        makeLatest: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - uses: geekyeggo/delete-artifact@v2
+      with:
+         name: assets-for-download
