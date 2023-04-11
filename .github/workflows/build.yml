@@ -101,8 +101,8 @@ jobs:
 
       - uses: ncipollo/release-action@v1
         with:
-          tag: ${{ env.release }}
-          name: "${{ env.release }}"
+          tag: ${{ env.version }}
+          name: "${{ env.version }}"
           omitBody: "true"
           prerelease: "true"
           allowUpdates: true
