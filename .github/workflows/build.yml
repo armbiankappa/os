@@ -86,7 +86,7 @@ jobs:
           echo "version=${{ steps.prerelease.outputs.release }}" >> $GITHUB_OUTPUT
           echo "version=${{ steps.prerelease.outputs.release }}" >> $GITHUB_ENV
 
-          if [[ -z "${{ steps.stable.outputs.release }}" ]]; then
+          if [[ -z "${{ steps.prerelease.outputs.release }}" ]]; then
               echo "${{ steps.stable.outputs.release }}" > tag
               echo "version=${{ steps.stable.outputs.release }}" >> $GITHUB_OUTPUT
               echo "version=${{ steps.stable.outputs.release }}" >> $GITHUB_ENV
