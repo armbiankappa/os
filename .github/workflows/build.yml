@@ -4,8 +4,8 @@ on:
   repository_dispatch:
     types: ["Dispatched jobs"]
   push:
-"  schedule:
-"    - cron: "30 3 * * *"
+#  schedule:
+#    - cron: "30 3 * * *"
   workflow_dispatch:
     inputs:
       release:
