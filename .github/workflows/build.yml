@@ -1,28 +1,11 @@
 name: Build Images
-#
 on:
   repository_dispatch:
-    types: ["Dispatched jobs"]
-  push:
-#  schedule:
-#    - cron: "30 3 * * *"
-  workflow_dispatch:
-    inputs:
-      release:
-        type: choice
-        description: 'Release'
-        options:
-        - nightly
-        - stable
-      board:
-        description: 'Board'
-        required: false
-        default: ''
-      version:
-        description: 'Version'
-        required: false
-        default: ''
+    types: [Build]
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
 
@@ -30,101 +13,42 @@ jobs:
     name: "Prepare"
     if: ${{ github.repository_owner == 'armbiankappa' }}
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{steps.releases.outputs.version}}
     steps:
 
-      - name: "Cancel active workflow"
-        uses: styfle/cancel-workflow-action@0.11.0
+      - uses: dev-drprasad/delete-tag-and-release@v0.2.1
         with:
-          all_but_latest: true
-          access_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: "Keep only 32 nightly releases"
-        uses: Vucko130/delete-older-releases@v0.2.2
-        with:
-          keep_latest: 32
+          tag_name: ${{ github.event.client_payload.version }}
+          delete_release: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "Purge action workflow logs"
-        uses: igorjs/gh-actions-clean-workflow@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          days_old: 10
-
-  Version:
-    name: "Generate version"
-    needs: Prepare
-    if: ${{ github.repository_owner == 'armbiankappa' }}
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{steps.releases.outputs.version}}
-    steps:
-
-      - name: Get latest release of NodeJS
-        uses: rez0n/actions-github-release@main
-        id: prerelease
-        env:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: "armbian/os"
-          type: "prerelease"
-
-      - name: Get latest release of NodeJS
-        uses: rez0n/actions-github-release@main
-        id: stable
-        env:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: "armbian/os"
-          type: "stable"
-
-      - name: "Store TAG"
-        id: releases
-        run: |
-
-          echo "${{ steps.prerelease.outputs.release }}" > tag
-          echo "version=${{ steps.prerelease.outputs.release }}" >> $GITHUB_OUTPUT
-          echo "version=${{ steps.prerelease.outputs.release }}" >> $GITHUB_ENV
-
-          if [[ -z "${{ steps.prerelease.outputs.release }}" ]]; then
-              echo "${{ steps.stable.outputs.release }}" > tag
-              echo "version=${{ steps.stable.outputs.release }}" >> $GITHUB_OUTPUT
-              echo "version=${{ steps.stable.outputs.release }}" >> $GITHUB_ENV
-          fi          
-
-      - name: 'Upload Artifact'
-        uses: actions/upload-artifact@v3
-        with:
-          name: assets-for-download
-          path: tag
-          retention-days: 5
-
       - uses: ncipollo/release-action@v1
+        if: ${{ github.event.client_payload.release == 'nightly' }}
         with:
-          tag: ${{ env.version }}
-          name: "${{ env.version }}"
-          omitBody: "true"
-          prerelease: "true"
+          tag: "${{ github.event.client_payload.version }}"
+          name: "${{ github.event.client_payload.version }}"
+          omitBody: true
+          prerelease: true
           allowUpdates: true
           removeArtifacts: true
           token: ${{ secrets.GITHUB_TOKEN }}
         
-  Cluster_1:
+  Build:
 
-    needs: Version
-    name: "Cluster 10/10"
-    if: ${{ success() && github.repository_owner == 'armbiankappa' }}
+    needs: Prepare
+    name: "Cluster 5/5"
+    if: ${{ github.repository_owner == 'armbiankappa' }}
     uses: armbian/scripts/.github/workflows/build-images.yml@main
 
     with:
 
-      config: "${{ github.event.inputs.config || 'all.conf' }}"
-      release: "${{ github.event.inputs.release || 'nightly' }}"
-      board: '${{ github.event.inputs.board }}'
-      part: 10
-      of: 10
-      version: "${{ needs.Version.outputs.version }}"
-      parallel: 20
+      config: "${{ github.event.client_payload.config || 'all.conf' }}"
+      release: "${{ github.event.client_payload.release || 'nightly' }}"
+      board: '${{ github.event.client_payload.board }}'
+      part: 5
+      of: 5
+      version: "${{ github.event.client_payload.version }}"
+      parallel: 10
 
     secrets:
       ACCESS_TOKEN:  ${{ secrets.GITHUB_TOKEN }} # ${{ secrets.ACCESS_TOKEN }}
@@ -136,25 +60,16 @@ jobs:
 
   Closing:
 
-    name: "Closing"
-    needs: [Cluster_1]
+    name: "Closing"    
+    if: always()
+    needs: [Build]
     runs-on: ubuntu-latest
     steps:
-   
-    - name: Download a single artifact
-      uses: actions/download-artifact@v3
-      with:
-         name: assets-for-download
-         path: tag
-
-    - name: "Get tag"
-      run: echo "TAG=$(cat tag/tag)" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Keep only 3 releases"
+    
+    - name: "Keep only 16 ${{ github.event.client_payload.release }} releases"
       uses: Vucko130/delete-older-releases@v0.2.2
       with:
-        keep_latest: 3
+        keep_latest: 16
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
@@ -165,16 +80,12 @@ jobs:
         days_old: 14
 
     - uses: ncipollo/release-action@v1
-      if: ${{ github.repository_owner == 'armbian-gama' && github.event.inputs.version == '' }}
+      if: ${{ github.repository_owner == 'armbiankappa' && github.event.client_payload.release == 'nightly' }}
       with:
-        tag: ${{ env.TAG }}
+        tag: "${{ github.event.client_payload.version }}"
         omitBody: true
         omitName: true
         allowUpdates: true
         prerelease: false
         makeLatest: true
         token: ${{ secrets.GITHUB_TOKEN }}
-
-    - uses: geekyeggo/delete-artifact@v2
-      with:
-         name: assets-for-download
