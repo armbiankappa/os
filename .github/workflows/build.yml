@@ -47,7 +47,7 @@ jobs:
       parallel: 20
       part: 5
       of: 6
-      version: "${{ needs.Prepare.outputs.version }}"
+      version: "${{ github.event.client_payload.version }}"
       deploy: false
     secrets:
       ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
