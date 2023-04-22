@@ -36,27 +36,26 @@ jobs:
   Build:
 
     needs: Prepare
-    name: "Cluster 5/5"
+    name: "Cluster 5/6"
     if: ${{ github.repository_owner == 'armbiankappa' }}
     uses: armbian/scripts/.github/workflows/build-images.yml@main
 
     with:
-
       config: "${{ github.event.client_payload.config || 'all.conf' }}"
       release: "${{ github.event.client_payload.release || 'nightly' }}"
-      board: '${{ github.event.client_payload.board }}'
+      board: "${{ github.event.client_payload.board }}"
+      parallel: 20
       part: 5
-      of: 5
-      version: "${{ github.event.client_payload.version }}"
-      parallel: 10
-
+      of: 6
+      version: "${{ needs.Prepare.outputs.version }}"
+      deploy: false
     secrets:
-      ACCESS_TOKEN:  ${{ secrets.GITHUB_TOKEN }} # ${{ secrets.ACCESS_TOKEN }}
-      SSH_KEY_TORRENTS: ${{ secrets.KEY_TORRENTS }}
-      KNOWN_HOSTS_UPLOAD: ${{ secrets.KNOWN_HOSTS_UPLOAD }}
+      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      KEY_ARMBIAN_UPLOAD: ${{ secrets.KEY_ARMBIAN_UPLOAD }}
+      KNOWN_HOSTS_ARMBIAN_UPLOAD: ${{ secrets.KNOWN_HOSTS_ARMBIAN_UPLOAD }}
+      ARMBIAN_HOST_UPLOAD: ${{ secrets.ARMBIAN_HOST_UPLOAD }}
       GPG_KEY1: ${{ secrets.GPG_KEY1 }}
       GPG_PASSPHRASE1: ${{ secrets.GPG_PASSPHRASE1 }}
-
 
   Closing:
 
